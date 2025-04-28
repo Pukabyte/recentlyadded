@@ -1,0 +1,17 @@
+version: '3'
+
+services:
+  plex-discord-updates:
+    build: .
+    container_name: plex-discord-updates
+    restart: unless-stopped
+    volumes:
+      - ./config.yml:/app/config.yml
+    environment:
+      - TZ=UTC 
+    networks:
+      - saltbox
+
+networks:
+  saltbox:
+    external: true

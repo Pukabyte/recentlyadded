@@ -80,22 +80,15 @@ except:
     uptime_status = None
 plex_url = config["plex"]["url"]
 plex_token = config["plex"]["token"]
-movie_library = config["plex"]["libraries"]["movies"]
-tv_library = config["plex"]["libraries"]["shows"]
 webhook_url = script_config["webhook"]
 lookback_period = script_config["lookback_period"]
-skip_movies = script_config["skip_libraries"]["movies"]
-skip_tv = script_config["skip_libraries"]["shows"]
+skip_libraries = script_config["skip_libraries"]
 show_total_episodes = script_config["show_total_episode_count"]
 show_individual_episodes = script_config["show_episode_count_per_show"]
-message_title = script_config["message_options"]["title"]
+message_title = script_config["message_options"]["titles"]
 embed_options = script_config["embed_options"]
 embed_thumbnail = embed_options["thumbnail"]
 bullet = embed_options["bullet"]
-movie_embed_colour = embed_options["movies_colour"]
-tv_embed_colour = embed_options["shows_colour"]
-movie_emote = embed_options["movies_emote"]
-tv_emote = embed_options["shows_emote"]
 max_length_exceeded_msg = script_config["overflow_footer"]
 
 # Character limit of a discord message including embeds
@@ -104,7 +97,69 @@ message_max_length = 4000
 if testing_mode:
     webhook_url = script_config["testing"]["webhook"]
 
-
+# Library categories and their settings
+library_categories = {
+    "movies": {
+        "library": config["plex"]["libraries"]["movies"],
+        "colour": embed_options["movies_colour"],
+        "emote": embed_options["movies_emote"],
+        "skip": skip_libraries["movies"]
+    },
+    "shows": {
+        "library": config["plex"]["libraries"]["shows"],
+        "colour": embed_options["shows_colour"],
+        "emote": embed_options["shows_emote"],
+        "skip": skip_libraries["shows"]
+    },
+    "kids_movies": {
+        "library": config["plex"]["libraries"]["kids_movies"],
+        "colour": embed_options["kids_movies_colour"],
+        "emote": embed_options["kids_movies_emote"],
+        "skip": skip_libraries["kids_movies"]
+    },
+    "kids_shows": {
+        "library": config["plex"]["libraries"]["kids_shows"],
+        "colour": embed_options["kids_shows_colour"],
+        "emote": embed_options["kids_shows_emote"],
+        "skip": skip_libraries["kids_shows"]
+    },
+    "anime_movies": {
+        "library": config["plex"]["libraries"]["anime_movies"],
+        "colour": embed_options["anime_movies_colour"],
+        "emote": embed_options["anime_movies_emote"],
+        "skip": skip_libraries["anime_movies"]
+    },
+    "anime_shows": {
+        "library": config["plex"]["libraries"]["anime_shows"],
+        "colour": embed_options["anime_shows_colour"],
+        "emote": embed_options["anime_shows_emote"],
+        "skip": skip_libraries["anime_shows"]
+    },
+    "uhd_movies": {
+        "library": config["plex"]["libraries"]["uhd_movies"],
+        "colour": embed_options["uhd_movies_colour"],
+        "emote": embed_options["uhd_movies_emote"],
+        "skip": skip_libraries["uhd_movies"]
+    },
+    "uhd_shows": {
+        "library": config["plex"]["libraries"]["uhd_shows"],
+        "colour": embed_options["uhd_shows_colour"],
+        "emote": embed_options["uhd_shows_emote"],
+        "skip": skip_libraries["uhd_shows"]
+    },
+    "mux_movies": {
+        "library": config["plex"]["libraries"]["mux_movies"],
+        "colour": embed_options["mux_movies_colour"],
+        "emote": embed_options["mux_movies_emote"],
+        "skip": skip_libraries["mux_movies"]
+    },
+    "mux_shows": {
+        "library": config["plex"]["libraries"]["mux_shows"],
+        "colour": embed_options["mux_shows_colour"],
+        "emote": embed_options["mux_shows_emote"],
+        "skip": skip_libraries["mux_shows"]
+    }
+}
 def clean_year(media):
     """
     Takes a Show/Movie object and returns the title of it with the year
@@ -165,7 +220,6 @@ def create_embeds(embed_title, embed_description, embed_color, max_length):
 
 
 if __name__ == "__main__":
-
     # Formatting strings from user variables section
     bullet += " "
     max_length_exceeded_msg = f"\n\n**{max_length_exceeded_msg}**"
@@ -184,131 +238,106 @@ if __name__ == "__main__":
     else:
         lookback_text = (f"{lookback_period[:-1]}"
                          f" {period_dict[lookback_period[-1]]}s")
-    message_title = f"_ _\n**{message_title} {lookback_text}:**"
 
-    # Initializing plex connection and data structures
+    # Initializing plex connection
     plex = PlexServer(plex_url, plex_token)
     webhook = Webhook(webhook_url)
-    webhook_embeds = []
-    media_lists = []
 
-    # Skips scanning libraries if specified
-    if not skip_movies:
-        movies = plex.library.section(movie_library)
-        # Retrieves all movies added since the start of the lookback period
-        new_movies = movies.search(filters={"addedAt>>": lookback_period})
-        # Raises a flag to skip the movie embed
-        # creation/addition if there are no new movies
-        if not new_movies:
-            skip_movies = True
-        else:
-            # Building movies list
-            movies_str = bullet
-            new_movies_formatted = [clean_year(movie) for movie in new_movies]
-            total_movies = len(new_movies_formatted)
-            movies_str += ("\n" + bullet).join(new_movies_formatted)
-            media_lists.append(movies_str)
+    # Process each group separately
+    for group_name, group_config in script_config["library_groups"].items():
+        webhook_embeds = []
+        group_title = f"_ _\n**{script_config['message_options']['titles'][group_name]} {lookback_text}:**"
 
-            # Pluralizes "Movie" title string if appropriate
-            movies_title_counted = "Movie"
-            if total_movies != 1:
-                movies_title_counted += "s"
+        # Process each category in the current group
+        for category in group_config["libraries"]:
+            settings = library_categories[category]
+            if settings["skip"]:
+                continue
 
-            # Builds the Movies embed title
-            movie_title = (f"{total_movies} {movies_title_counted}"
-                           f" {movie_emote}")
-    if not skip_tv:
-        shows = plex.library.section(tv_library)
-        # Retrieves all TV episodes added since the start of the lookback
-        # period.
-        new_eps = shows.searchEpisodes(filters={"addedAt>>": lookback_period})
-        # Raises a flag to skip the TV show embed creation/addition if there
-        # are no new episodes
-        if not new_eps:
-            skip_tv = True
-        else:
-            # Building TV shows list
-            newShows = []
-            for episode in new_eps:
-                # Cannot directly retrieve the Show object from the Episode
-                # object so I'm using the workaround to search by unique
-                # RatingKey instead.
-                newShows.append(clean_year(
-                                plex.fetchItem(episode.grandparentRatingKey)))
+            try:
+                is_movie = "movies" in category
+                library = plex.library.section(settings["library"])
 
-            # Counts the duplicates and builds the
-            # properly-formatted list with episode counts
-            counted_shows = Counter(newShows)
-            show_list = []
-            total_episodes = 0
+                if is_movie:
+                    # Process movies
+                    new_media = library.search(filters={"addedAt>>": lookback_period})
+                    if not new_media:
+                        print(f"No new movies in {settings['library']}")
+                        continue
 
-            # Loops through the dictionary of shows with their counts
-            for counted_show in counted_shows:
-                # Retrieves the number of new episodes for the current show
-                episode_count = counted_shows[counted_show]
-                total_episodes += episode_count
-                episodes_counted = "episode"
-                # Pluralizes "episode" string if appropriate
-                if episode_count > 1:
-                    episodes_counted += "s"
-                if show_individual_episodes:
-                    show_list.append(f"{bullet}{counted_show} -"
-                                     f" *{episode_count} {episodes_counted}*")
+                    media_str = bullet
+                    new_media_formatted = [clean_year(item) for item in new_media]
+                    total_items = len(new_media_formatted)
+                    media_str += ("\n" + bullet).join(new_media_formatted)
+
+                    # Build title
+                    media_type = "Movie"
+                    if total_items != 1:
+                        media_type += "s"
+                    title = f"{total_items} {media_type} {settings['emote']}"
+
                 else:
-                    show_list.append(bullet + counted_show)
-            show_list.sort()
-            total_shows = len(show_list)
-            tv_str = "\n".join(show_list)
-            media_lists.append(tv_str)
+                    # Process TV shows
+                    new_eps = library.searchEpisodes(filters={"addedAt>>": lookback_period})
+                    if not new_eps:
+                        print(f"No new episodes in {settings['library']}")
+                        continue
 
-            # Pluralizes "TV Show" and "Episode" title strings if appropriate
-            show_title_counted = "Show"
-            episode_title_counted = "Episode"
-            # Case for multiple shows, therefore multiple episodes
-            if total_shows > 1:
-                episode_title_counted += "s"
-                show_title_counted += "s"
-            # Case where there is only one show, but has multiple episodes
-            elif episode_count > 1:
-                show_title_counted += "s"
+                    new_shows = []
+                    for episode in new_eps:
+                        new_shows.append(clean_year(
+                            plex.fetchItem(episode.grandparentRatingKey)))
 
-            if show_total_episodes:
-                # Builds the TV Shows embed title with the episode count
-                tv_title = (f"{total_shows} {show_title_counted} /"
-                            f" {total_episodes} {episode_title_counted}"
-                            f" {tv_emote}")
-            else:
-                # Builds the TV Shows embed title
-                tv_title = (f"{total_shows} {show_title_counted} {tv_emote}")
+                    counted_shows = Counter(new_shows)
+                    show_list = []
+                    total_episodes = 0
 
-    # Building embeds
-    list_count = len(media_lists)
-    if ((sum([len(descr) for descr in media_lists]) < message_max_length)):
-        # Sets to max message length if the sum of both lists is less than it
-        embed_length = message_max_length
-    else:
-        # Sets to max message length if there is only
-        # one list. Otherwise divides the total embed
-        # length by however many lists there are.
-        embed_length = message_max_length // list_count
+                    for counted_show in counted_shows:
+                        episode_count = counted_shows[counted_show]
+                        total_episodes += episode_count
+                        episodes_counted = "episode"
+                        if episode_count > 1:
+                            episodes_counted += "s"
+                        if show_individual_episodes:
+                            show_list.append(f"{bullet}{counted_show} -"
+                                           f" *{episode_count} {episodes_counted}*")
+                        else:
+                            show_list.append(bullet + counted_show)
+                    show_list.sort()
+                    total_shows = len(show_list)
+                    media_str = "\n".join(show_list)
 
-    if not skip_movies:
-        create_embeds(movie_title, movies_str, movie_embed_colour,
-                      embed_length)
-    if not skip_tv:
-        create_embeds(tv_title, tv_str, tv_embed_colour, embed_length)
+                    # Build title
+                    show_type = "Show"
+                    episode_type = "Episode"
+                    if total_shows > 1:
+                        episode_type += "s"
+                        show_type += "s"
+                    elif total_episodes > 1:
+                        show_type += "s"
 
-    # Adds thumnail image to embeds if specified
-    [embed.set_thumbnail(embed_thumbnail) for embed in webhook_embeds]
+                    if show_total_episodes:
+                        title = (f"{total_shows} {show_type} /"
+                                f" {total_episodes} {episode_type}"
+                                f" {settings['emote']}")
+                    else:
+                        title = f"{total_shows} {show_type} {settings['emote']}"
 
-    # Sending webhook
-    if webhook_embeds:
-        try:
-            webhook.send(message_title, embeds=webhook_embeds)
-        except Exception as err:
-            print("There was an error sending the message:", err)
-    else:
-        print("No new/specified media to notify about - message not sent.")
+                # Create embed for this category
+                create_embeds(title, media_str, settings["colour"], message_max_length)
+            except Exception as e:
+                print(f"Error processing {settings['library']}: {str(e)}")
+                continue
+
+        # Adds thumbnail image to embeds if specified
+        [embed.set_thumbnail(embed_thumbnail) for embed in webhook_embeds]
+
+        # Sending webhook for this group only if there are embeds
+        if webhook_embeds:
+            try:
+                webhook.send(group_title, embeds=webhook_embeds)
+            except Exception as err:
+                print(f"There was an error sending the {group_name} message:", err)
 
     # Ping uptime status monitor if specified
     if uptime_status:
