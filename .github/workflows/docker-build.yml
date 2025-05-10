@@ -21,24 +21,42 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get latest tag
-        id: get_latest_tag
-        run: |
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
-
-      - name: Bump version
+      - name: Get latest tag and bump version
         id: version
-        uses: phips28/gh-action-bump-version@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          minor-wording: 'feat,feature'
-          major-wording: 'major'
-          patch-wording: 'fix,patch'
-          default: 'patch'
-          commit-message: 'chore(release): bump version to {{version}}'
-          tag-prefix: 'v'
+        run: |
+          # Get latest tag or default to v0.0.0
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          
+          # Extract version numbers
+          version=${latest_tag#v}
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          # Get commit message
+          commit_msg=$(git log -1 --pretty=%B)
+          
+          # Determine version bump based on commit message
+          if [[ "$commit_msg" == *"major:"* ]]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [[ "$commit_msg" == *"feat:"* ]] || [[ "$commit_msg" == *"feature:"* ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+          
+          # Create new tag
+          new_tag="v$major.$minor.$patch"
+          echo "New tag: $new_tag"
+          
+          # Create and push tag
+          git tag $new_tag
+          git push origin $new_tag
+          
+          # Set output
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
   build:
     needs: version
