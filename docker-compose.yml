@@ -1,9 +1,9 @@
 version: '3'
 
 services:
-  recently-added:
-    build: .
-    container_name: recently-added
+  recentlyadded:
+    image: ghcr.io/pukabyte/recentlyadded:latest
+    container_name: recentlyadded
     restart: unless-stopped
     volumes:
       - ./config.yml:/app/config.yml
