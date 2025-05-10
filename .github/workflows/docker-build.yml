@@ -61,6 +61,18 @@ jobs:
           # Set output
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          name: Release ${{ steps.version.outputs.new_tag }}
+          tag_name: ${{ steps.version.outputs.new_tag }}
+          generate_release_notes: true
+          files: |
+            Dockerfile
+            main.py
+            requirements.txt
+
   build:
     needs: version
     if: ${{ needs.version.outputs.new_tag != '' || github.event_name == 'pull_request' }}
