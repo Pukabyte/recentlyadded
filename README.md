@@ -42,7 +42,7 @@ A Python application that monitors your Plex server for recently added media and
 Create a `config.yml` file in the same directory as `main.py` with the following structure:
 
 ```yaml
-pplex:
+plex:
     url: "http://plex:32400"
     token: "{plex_token}"
     # These library names must exactly match the library names in Plex.
