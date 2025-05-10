@@ -1,7 +1,7 @@
 plex:
     url: "http://plex:32400"
     token: "{plex_token}"
-    # These library names must match the names in Plex.
+    # These library names must exactly match the library names in Plex.
     libraries:
         movies: Movies
         shows: TV

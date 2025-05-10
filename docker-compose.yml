@@ -1,9 +1,9 @@
 version: '3'
 
 services:
-  plex-discord-updates:
+  recently-added:
     build: .
-    container_name: plex-discord-updates
+    container_name: recently-added
     restart: unless-stopped
     volumes:
       - ./config.yml:/app/config.yml

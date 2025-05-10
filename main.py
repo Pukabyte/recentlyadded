@@ -4,10 +4,25 @@ import requests
 import sys
 import time
 import yaml
+import logging
 from collections import Counter
 from dhooks import Webhook, Embed
 from pathlib import Path
 from plexapi.server import PlexServer
+import schedule
+import threading
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-7s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler('/app/logs/app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 '''
 ------------------------------------------------------------------------------
@@ -197,7 +212,7 @@ def trim_on_newlines(long_string, max_length):
         return long_string + max_length_exceeded_msg
 
 
-def create_embeds(embed_title, embed_description, embed_color, max_length):
+def create_embeds(embed_title, embed_description, embed_color, max_length, webhook_embeds):
     """
     Creates an embed with data from the given arguments, but modifies the
     description of the embed so be below a given amount of characters. Will
@@ -209,6 +224,7 @@ def create_embeds(embed_title, embed_description, embed_color, max_length):
     embed_description -- description for the embed
     embed_color -- colour for the embed
     max_length -- integer; the max length for the embed's description
+    webhook_embeds -- list to append the created embed to
     """
     if len(embed_description) > max_length:
         embed_description = trim_on_newlines(embed_description, max_length)
@@ -219,10 +235,18 @@ def create_embeds(embed_title, embed_description, embed_color, max_length):
     webhook_embeds.append(embed)
 
 
-if __name__ == "__main__":
+def run_update():
+    """
+    Main function that runs the update process
+    """
+    logger.info("Starting update")
+    start_time = int(time.time())
+    total_webhooks = 0
+    library_summary = {}
+
     # Formatting strings from user variables section
-    bullet += " "
-    max_length_exceeded_msg = f"\n\n**{max_length_exceeded_msg}**"
+    bullet_local = bullet + " "
+    max_length_exceeded_msg_local = f"\n\n**{max_length_exceeded_msg}**"
     # Checks whether the lookback period should be specified
     # in plural and makes the message text look more natural.
     period_dict = {
@@ -239,9 +263,18 @@ if __name__ == "__main__":
         lookback_text = (f"{lookback_period[:-1]}"
                          f" {period_dict[lookback_period[-1]]}s")
 
+    logger.info(f"Looking back {lookback_text}")
+
     # Initializing plex connection
-    plex = PlexServer(plex_url, plex_token)
-    webhook = Webhook(webhook_url)
+    try:
+        plex = PlexServer(plex_url, plex_token)
+        webhook = Webhook(webhook_url)
+        logger.info("Connected to Plex")
+    except Exception as e:
+        logger.error(f"Plex connection failed: {str(e)}")
+        return
+
+    logger.info("Collecting Recently Added Media")
 
     # Process each group separately
     for group_name, group_config in script_config["library_groups"].items():
@@ -262,13 +295,13 @@ if __name__ == "__main__":
                     # Process movies
                     new_media = library.search(filters={"addedAt>>": lookback_period})
                     if not new_media:
-                        print(f"No new movies in {settings['library']}")
                         continue
 
-                    media_str = bullet
+                    media_str = bullet_local
                     new_media_formatted = [clean_year(item) for item in new_media]
                     total_items = len(new_media_formatted)
-                    media_str += ("\n" + bullet).join(new_media_formatted)
+                    media_str += ("\n" + bullet_local).join(new_media_formatted)
+                    library_summary[settings['library']] = total_items
 
                     # Build title
                     media_type = "Movie"
@@ -280,7 +313,6 @@ if __name__ == "__main__":
                     # Process TV shows
                     new_eps = library.searchEpisodes(filters={"addedAt>>": lookback_period})
                     if not new_eps:
-                        print(f"No new episodes in {settings['library']}")
                         continue
 
                     new_shows = []
@@ -299,13 +331,14 @@ if __name__ == "__main__":
                         if episode_count > 1:
                             episodes_counted += "s"
                         if show_individual_episodes:
-                            show_list.append(f"{bullet}{counted_show} -"
+                            show_list.append(f"{bullet_local}{counted_show} -"
                                            f" *{episode_count} {episodes_counted}*")
                         else:
-                            show_list.append(bullet + counted_show)
+                            show_list.append(bullet_local + counted_show)
                     show_list.sort()
                     total_shows = len(show_list)
                     media_str = "\n".join(show_list)
+                    library_summary[settings['library']] = total_episodes
 
                     # Build title
                     show_type = "Show"
@@ -324,9 +357,9 @@ if __name__ == "__main__":
                         title = f"{total_shows} {show_type} {settings['emote']}"
 
                 # Create embed for this category
-                create_embeds(title, media_str, settings["colour"], message_max_length)
+                create_embeds(title, media_str, settings["colour"], message_max_length, webhook_embeds)
             except Exception as e:
-                print(f"Error processing {settings['library']}: {str(e)}")
+                logger.error(f"Error in {settings['library']}: {str(e)}")
                 continue
 
         # Adds thumbnail image to embeds if specified
@@ -336,13 +369,59 @@ if __name__ == "__main__":
         if webhook_embeds:
             try:
                 webhook.send(group_title, embeds=webhook_embeds)
+                total_webhooks += 1
             except Exception as err:
-                print(f"There was an error sending the {group_name} message:", err)
+                logger.error(f"Webhook failed for {group_name}: {str(err)}")
+
+    # Log summary
+    for library, count in library_summary.items():
+        logger.info(f"{library}: {count}")
+    logger.info(f"Webhooks sent: {total_webhooks}")
 
     # Ping uptime status monitor if specified
     if uptime_status:
         try:
             requests.get(f"{uptime_status}{int(time.time()) - start_time}")
         except Exception as err:
-            print(f"There was an error pinging the uptime status monitor:",
-                  err)
+            logger.error(f"Uptime ping failed: {str(err)}")
+
+    logger.info(f"Waiting for {lookback_text}")
+
+def run_scheduler():
+    """
+    Function to run the scheduler in a separate thread
+    """
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+if __name__ == "__main__":
+    logger.info("Starting")
+    
+    # Schedule the job based on lookback period
+    unit = lookback_period[-1]
+    value = int(lookback_period[:-1])
+    
+    if unit == 'm':
+        schedule.every(value).minutes.do(run_update)
+        logger.info(f"Schedule: every {value} minutes")
+    elif unit == 'h':
+        schedule.every(value).hours.do(run_update)
+        logger.info(f"Schedule: every {value} hours")
+    elif unit == 'd':
+        schedule.every(value).days.do(run_update)
+        logger.info(f"Schedule: every {value} days")
+    elif unit == 'w':
+        schedule.every(value).weeks.do(run_update)
+        logger.info(f"Schedule: every {value} weeks")
+    
+    # Run initial update
+    run_update()
+    
+    # Keep main thread alive and handle the scheduler
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Stopping")
