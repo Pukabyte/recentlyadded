@@ -16,16 +16,17 @@
 </div>
 
 <div align="center">
-  <p>Recently Added Media Discord Notifier for Plex.</p>
+  <p>Recently Added Media Discord Notifier for Plex and Jellyfin.</p>
 </div>
 
 # Recently Added
 
-A Python application that monitors your Plex server for recently added media and sends summary notifications to Discord via webhooks. An unobtrusive way to alert users of recently added content.
+A Python application that monitors your Plex or Jellyfin server for recently added media and sends summary notifications to Discord via webhooks. An unobtrusive way to alert users of recently added content.
 
 ## Features
 
-- Monitors multiple Plex libraries (Movies, TV Shows, Kids content, Anime, 4K, etc.)
+- **Multi-Platform Support**: Works with both Plex and Jellyfin servers
+- Monitors multiple libraries (Movies, TV Shows, Kids content, Anime, 4K, etc.)
 - Configurable lookback period for media additions
 - Discord webhook notifications with rich embeds
 - Support for different media types and quality categories
@@ -33,143 +34,116 @@ A Python application that monitors your Plex server for recently added media and
 
 ## Prerequisites
 
-- Plex Media Server
+- Plex Media Server **OR** Jellyfin Media Server
 - Discord webhook URL
 - Docker (optional, for containerized deployment)
 
+## Platform Setup
+
+### For Plex Users
+
+1. Get your Plex token from [plex.tv](https://www.plex.tv/claim/)
+2. Use the existing configuration format with `platform: "plex"`
+
+### For Jellyfin Users
+
+1. Get your Jellyfin API key:
+   - Log into your Jellyfin web interface
+   - Go to **Dashboard** → **Advanced** → **API Keys**
+   - Click **New API Key**
+   - Give it a name (e.g., "Discord Notifications")
+   - Copy the generated API key
+
+2. Find your library IDs by running:
+   ```bash
+   python find_jellyfin_libraries.py
+   ```
+
+3. Use the configuration format with `platform: "jellyfin"`
+
 ## Configuration
 
-Create a `config.yml` file in the same directory as `main.py` with the following structure:
+Create a `config.yml` file in the same directory as `main.py`. Use `config-unified-example.yml` as a template.
+
+### Key Configuration Options
 
 ```yaml
+# Platform selection: "plex" or "jellyfin"
+platform: "plex"
+
+# For Plex
 plex:
     url: "http://plex:32400"
-    token: "{plex_token}"
-    # These library names must exactly match the library names in Plex.
+    token: "{your_plex_token}"
     libraries:
         movies: Movies
         shows: TV
-        kids_movies: Movies - Kids
-        kids_shows: TV - Kids
-        anime_movies: Movies - Anime
-        anime_shows: TV - Anime
-        uhd_movies: Movies - 4K
-        uhd_shows: TV - 4K
-        mux_movies: Movies - Remux
-        mux_shows: TV - Remux
+        # ... other libraries
 
-plex_discord_media_updates:
-    # OPTIONALLY add push-monitoring URLs for services like Uptime Kuma or Healthchecks.io
-    uptime_status: ""
-    
-    # The discord webhook URL that will be used if not in testing mode (i.e. if testing_mode is set to False)
-    webhook: "https://discord.com/api/webhooks/1053465321685655602/{webhook_token}"
-    
-    # Media added since this long ago will be listed. 
-    # FORMAT: "1m", "1h", "1d", "1w" respectively correspond to 1 minute, 1 hour, 1 day, 1 week.
+# For Jellyfin
+jellyfin:
+    url: "http://jellyfin:8096"
+    api_key: "{your_jellyfin_api_key}"
+    libraries:
+        movies: "your_movies_library_id"
+        shows: "your_tv_library_id"
+        # ... other libraries
+
+# Discord webhook configuration
+plex_discord_media_updates:  # or jellyfin_discord_media_updates
+    webhook: "https://discord.com/api/webhooks/your_webhook_url"
     lookback_period: "4h"
-    
-    # Skipped libraries will not be scanned or included in the webhook message
-    skip_libraries:
-        movies: False
-        shows: False
-        kids_movies: False
-        kids_shows: False
-        anime_movies: False
-        anime_shows: False
-        uhd_movies: False
-        uhd_shows: False
-        mux_movies: True
-        mux_shows: True
-    
-    # Choose whether to show the total number of new episodes in the TV Show embed title
-    show_total_episode_count: True
-    
-    # Choose whether to show the number of new episodes for each individual show in the TV Show embed title.
-    show_episode_count_per_show: True
-    
-    message_options:
-        # Group-specific titles for webhook messages
-        titles:
-            standard: "Recently Added to HD Libraries in the last"
-            kids: "Recently Added to Kids Libraries in the last"
-            anime: "Recently Added to Anime Libraries in the last"
-            uhd: "Recently Added to 4K Libraries in the last"
-            mux: "Recently Added to Remux Libraries in the last"
-
-    embed_options:
-        # Optional thumbnail that will go in all embeds. Set to an empty string ("") to disable it or set to a direct image url string to enable it.
-        thumbnail: "" 
-        
-        # The symbol to denote each new entry in the lists in the embeds. Can be replaced with emotes (e.g. :point_right:).
-        bullet: "•"
-        
-        # Keep the "0x" and change the last 6 characters to the hex codes of your preferred colours.
-        movies_colour: 0xFB8800
-        shows_colour: 0xDE4501
-        kids_movies_colour: 0xFB8800
-        kids_shows_colour: 0xDE4501
-        anime_movies_colour: 0xFB8800
-        anime_shows_colour: 0xDE4501
-        uhd_movies_colour: 0xFB8800
-        uhd_shows_colour: 0xDE4501
-        mux_movies_colour: 0xFB8800
-        mux_shows_colour: 0xDE4501
-        
-        # Optional emotes to be used in the title for each embed. Must be in quotes.
-        movies_emote: ":clapper:"
-        shows_emote: ":tv:"
-        kids_movies_emote: ":clapper:"
-        kids_shows_emote: ":tv:"
-        anime_movies_emote: ":clapper:"
-        anime_shows_emote: ":tv:"
-        uhd_movies_emote: ":clapper:"
-        uhd_shows_emote: ":tv:"
-        mux_movies_emote: ":clapper:"
-        mux_shows_emote: ":tv:"
-
-    # The message that will display if a list is too long and needs to be cut short. Should be less than 90 characters. Will be bolded and appended with two newlines to the end of the list.
-    overflow_footer: "and more... check out the library for the rest!"
-
-    # Library groups configuration
-    library_groups:
-        standard:
-            libraries:
-                - movies
-                - shows
-        kids:
-            libraries:
-                - kids_movies
-                - kids_shows
-        anime:
-            libraries:
-                - anime_movies
-                - anime_shows
-        uhd:
-            libraries:
-                - uhd_movies
-                - uhd_shows
-        mux:
-            libraries:
-                - mux_movies
-                - mux_shows
+    # ... other settings
 ```
 
-## Docker Deployment
+## Installation
 
-1. Pull the latest image:
+### Manual Installation
+
+1. Install Python dependencies:
 ```bash
-git clone https://github.com/Pukabyte/recentlyadded.git
+pip install -r requirements.txt
 ```
-2. cd into the directory
 
-3. Create a copy of the config-example.yml` and edit the file with your settings
+2. Copy the example configuration:
 ```bash
-cp config-example.yml config.yml
+cp config-unified-example.yml config.yml
+```
+
+3. Edit the configuration file with your settings:
+```bash
 nano config.yml
 ```
 
-4. Run the container:
+4. Run the script:
+```bash
+python main.py
+```
+
+### Docker Deployment
+
+1. Create a `docker-compose.yml` file:
+```yaml
+version: '3'
+
+services:
+  recentlyadded:
+    image: ghcr.io/pukabyte/recentlyadded:latest
+    container_name: recentlyadded
+    restart: unless-stopped
+    volumes:
+      - ./config.yml:/app/config.yml
+    environment:
+      - TZ=UTC 
+    networks:
+      - your_network
+
+networks:
+  your_network:
+    external: true
+```
+
+2. Run the container:
 ```bash
 docker compose up -d
 ```
@@ -180,6 +154,40 @@ Logs are stored in the `/app/logs` directory inside the container. The log forma
 - Timestamp
 - Log level
 - Message
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"Failed to get libraries" error**
+   - Check your server URL and authentication credentials
+   - Ensure your server is accessible
+   - Verify API keys/tokens have the necessary permissions
+
+2. **"Library not found" errors**
+   - For Plex: Check library names match exactly
+   - For Jellyfin: Use the helper script to get correct library IDs
+
+3. **No media found**
+   - Check your lookback period setting
+   - Verify that media was actually added within the specified time period
+   - Check that library configurations are correct
+
+### Getting Help
+
+If you encounter issues:
+1. Check the logs in `/app/logs/app.log`
+2. Verify your configuration settings
+3. Test your server connection using the helper scripts
+
+## Differences Between Platforms
+
+| Feature | Plex | Jellyfin |
+|---------|------|----------|
+| Authentication | Token | API Key |
+| Library Reference | Names | IDs |
+| Date Filtering | Plex format | ISO date format |
+| API | PlexAPI library | REST API calls |
 
 ## Contributing
 

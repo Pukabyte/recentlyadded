@@ -2,3 +2,4 @@ dhooks
 plexapi
 pyyaml
 schedule
+requests
